@@ -1,4 +1,4 @@
-name: JP Update
+name: JP Upload
 
 on:
   schedule:
