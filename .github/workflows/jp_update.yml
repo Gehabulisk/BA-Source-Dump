@@ -1,4 +1,4 @@
-name: JP Update
+name: Dump JP Update
 
 on:
   workflow_dispatch:
@@ -42,27 +42,33 @@ jobs:
       - name: Run Dumper
         run: python getJPVersion.py
       
-      - name: Switch Branch and Clean
-        run: |
-          git checkout jp-dump
-          # Clean untracked files and directories
-          git clean -fd
-          git reset --hard
+      - name: Switch Branch
+        run: git checkout jp-dump
 
-      - name: Check if config.json exists
-        id: check_config
+      - name: Check config.json changed
+        id: check_diff
         shell: bash
         run: |
-          if [ -f "jp_data/config.json" ]; then
-            echo "config_exists=true" >> $GITHUB_OUTPUT
+          config_file="jp_data/config.json"
+          changed_flag=false
+
+          if git ls-tree -r HEAD --name-only | grep -Fxq "$config_file"; then
+            if ! git diff --quiet HEAD -- "$config_file"; then
+              echo "$config_file is different, apply changes."
+              changed_flag=true
+            else
+              echo "$config_file is identical, no changes needed."
+              # changed_flag remains false
+            fi
           else
-            echo "config_exists=false" >> $GITHUB_OUTPUT
-            echo "ERROR: jp_data/config.json not found!"
-            ls -la jp_data/ || echo "jp_data directory not found"
+            echo "$config_file does not exist. Added the file."
+            changed_flag=true
           fi
 
+          echo "changed=$changed_flag" >> $GITHUB_OUTPUT
+
       - name: Configure Git LFS
-        if: steps.check_config.outputs.config_exists == 'true'
+        if: steps.check_diff.outputs.changed == 'true'
         run: |
           git lfs install
           
@@ -75,12 +81,9 @@ jobs:
           git add .gitattributes
       
       - name: Commit and Push Update
-        if: steps.check_config.outputs.config_exists == 'true'
+        if: steps.check_diff.outputs.changed == 'true'
         shell: bash
         run: |
-          # Copy the newly generated jp_data to current directory
-          cp -r ../jp_data ./
-          
           raw_game_url=$(jq -r '.ServerInfoDataUrl' jp_data/config.json)
           raw_catalog=$(jq -r '.ConnectionGroups[0].OverrideConnectionGroups | .[-1].AddressablesCatalogUrlRoot' jp_data/config.json)
           
@@ -94,7 +97,7 @@ jobs:
           git push origin jp-dump
       
       - name: Send update to Discord
-        if: steps.check_config.outputs.config_exists == 'true'
+        if: steps.check_diff.outputs.changed == 'true'
         shell: bash
         run: |
           commit_hash=$(git rev-parse HEAD)
@@ -163,12 +166,3 @@ jobs:
                -d "$payload" \
                "${{ secrets.DISCORD_WEBHOOK_URL }}"
           echo "Discord notification sent."
-
-      - name: Show error if config not found
-        if: steps.check_config.outputs.config_exists == 'false'
-        shell: bash
-        run: |
-          echo "::error::jp_data/config.json was not generated. Dump process may have failed."
-          echo "Checking what files were generated:"
-          find . -name "*.json" -type f | head -20
-          exit 1
