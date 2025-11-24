@@ -41,9 +41,6 @@ jobs:
 
       - name: Run Dumper
         run: python getJPVersion.py
-      
-      - name: Switch Branch
-        run: git checkout jp-dump
 
       - name: Check config.json changed
         id: check_diff
