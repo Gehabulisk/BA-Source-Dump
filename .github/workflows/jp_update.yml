@@ -49,6 +49,20 @@ jobs:
           config_file="jp_data/config.json"
           changed_flag=false
 
+          # 保存当前 config.json 的内容（如果有）
+          if [ -f "$config_file" ]; then
+            cp "$config_file" "/tmp/config_backup.json"
+          fi
+
+          # 切换到目标分支
+          git checkout jp-dump
+
+          # 恢复备份的 config.json（如果有）
+          if [ -f "/tmp/config_backup.json" ]; then
+            mv "/tmp/config_backup.json" "$config_file"
+          fi
+
+          # 现在检查是否有变化
           if git ls-tree -r HEAD --name-only | grep -Fxq "$config_file"; then
             if ! git diff --quiet HEAD -- "$config_file"; then
               echo "$config_file is different, apply changes."
@@ -64,17 +78,13 @@ jobs:
 
           echo "changed=$changed_flag" >> $GITHUB_OUTPUT
 
-      - name: Clean up unchanged files
+      - name: Clean up if no changes
         if: steps.check_diff.outputs.changed == 'false'
         shell: bash
         run: |
-          echo "No changes detected, cleaning up generated files..."
-          git checkout -- jp_data/
-          git clean -fd jp_data/
-
-      - name: Switch Branch
-        if: steps.check_diff.outputs.changed == 'true'
-        run: git checkout jp-dump
+          echo "No changes detected, resetting working directory..."
+          git reset --hard HEAD
+          git clean -fd
 
       - name: Configure Git LFS
         if: steps.check_diff.outputs.changed == 'true'
