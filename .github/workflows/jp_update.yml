@@ -45,7 +45,20 @@ jobs:
       - name: Switch Branch
         run: git checkout jp-dump
 
+      - name: Check if config.json exists
+        id: check_config
+        shell: bash
+        run: |
+          if [ -f "jp_data/config.json" ]; then
+            echo "config_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "config_exists=false" >> $GITHUB_OUTPUT
+            echo "ERROR: jp_data/config.json not found!"
+            ls -la jp_data/ || echo "jp_data directory not found"
+          fi
+
       - name: Configure Git LFS
+        if: steps.check_config.outputs.config_exists == 'true'
         run: |
           git lfs install
           
@@ -58,6 +71,7 @@ jobs:
           git add .gitattributes
       
       - name: Commit and Push Update
+        if: steps.check_config.outputs.config_exists == 'true'
         shell: bash
         run: |
           raw_game_url=$(jq -r '.ServerInfoDataUrl' jp_data/config.json)
@@ -73,6 +87,7 @@ jobs:
           git push origin jp-dump
       
       - name: Send update to Discord
+        if: steps.check_config.outputs.config_exists == 'true'
         shell: bash
         run: |
           commit_hash=$(git rev-parse HEAD)
@@ -141,3 +156,12 @@ jobs:
                -d "$payload" \
                "${{ secrets.DISCORD_WEBHOOK_URL }}"
           echo "Discord notification sent."
+
+      - name: Show error if config not found
+        if: steps.check_config.outputs.config_exists == 'false'
+        shell: bash
+        run: |
+          echo "::error::jp_data/config.json was not generated. Dump process may have failed."
+          echo "Checking what files were generated:"
+          find . -name "*.json" -type f | head -20
+          exit 1
